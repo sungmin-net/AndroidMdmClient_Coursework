@@ -33,7 +33,7 @@ C:\Users\Sungmin>
 
 다음의 명령어를 쳐줍니다. (git이 설치되어 있어야 합니다.)
 
-소스경로> git clone https://github.com/mmlab-uran/APM-Client-Android.git
+소스경로> git clone https://github.com/sungmin-net/android-mdmClient-courseWork.git
 
 ##### 2.1. Platform download
 
