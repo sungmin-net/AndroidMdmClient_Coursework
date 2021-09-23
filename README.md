@@ -72,4 +72,5 @@ File > Export > Export to Zip file.. 로 진행하여 임의의 경로에 projec
 ##### 6.1. Protocol
 
 Client→Server: Magic + RsaEnc(Version + Cmd + UserId) + ServAlias
+
 Client←Server: Magic + ToBeSigned(Version + TimeStamp + CurPolicies) + ServSign
