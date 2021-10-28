@@ -16,7 +16,8 @@ Device > 설정 > 디바이스 정보 > 소프트웨어 정보 > 빌드번호를
 
 ##### 1.3. ADB의 경로를 Path 환경변수에 추가
 
-기본 경로는 아래입니다. cmd 콘솔에서 adb 를 쳤을 때 반응이 오도록 path 를 이어줍니다. (https://serendipper16.tistory.com/6 등 블로그을 참조합니다.)
+기본 경로는 아래입니다. cmd 콘솔에서 adb 를 쳤을 때 반응이 오도록 path 를 이어줍니다. <br>
+(https://serendipper16.tistory.com/6 등 블로그를 참조합니다.)
 
 C:\Users\사용자 이름\AppData\Local\Android\Sdk\platform-tools\
 
