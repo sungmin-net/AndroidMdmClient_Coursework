@@ -56,7 +56,7 @@ Device 가 연결된 상태에서 cmd 콘솔에 다음의 adb 명령어를 쳐�
 
 adb shell dpm set-device-owner net.sungmin.jicomsy/.AdminReceiver
 
-다음과 같이 반응하면 성공입니다. (Device 안에 어떠한 Account 도 존재해서는 안됩니다. ex. 구글 계정)
+다음과 같이 반응하면 성공입니다. (Device 안에 어떠한 Account 도 존재해서는 안됩니다. ex. 구글 계정/ cf. Uran admin도 안됩니다.)
 
 C:\Users\Sungmin>adb shell dpm set-device-owner net.sungmin.jicomsy/.AdminReceiver <br>
 Success: Device owner set to package net.sungmin.jicomsy <br>
