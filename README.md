@@ -22,10 +22,10 @@ C:\Users\사용자 이름\AppData\Local\Android\Sdk\platform-tools\
 
 이후 기기를 개발용 PC와 연결하고, cmd 에서 adb devices 명령에 다음과 같이 반응하면 성공입니다.
 
-C:\Users\Sungmin>adb devices
-*daemon not running; starting now at tcp:5037
-*daemon started successfully
-List of devices attached
+C:\Users\Sungmin>adb devices<br>
+*daemon not running; starting now at tcp:5037<br>
+*daemon started successfully<br>
+List of devices attached<br>
 5b42ccc6   device
 C:\Users\Sungmin>
 
