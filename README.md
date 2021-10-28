@@ -32,13 +32,15 @@ C:\Users\Sungmin>
 
 ### 2. Download
 
-다음의 명령어를 쳐줍니다. (git이 설치되어 있어야 합니다.)
+다음의 명령어를 쳐줍니다. (git이 설치되어 있어야 합니다. git 설치는 인터넷을 참고하세요.)
+
+git clone로 파일을 다운로드할 곳을 소스경로로 지정하고, Git Bash에 아래의 코드를 입력합니다.
 
 소스경로> git clone https://github.com/sungmin-net/android-mdmClient-courseWork.git
 
 ##### 2.1. Platform download
 
-Prototype 은 여건상 마시멜로 버전으로 만들었습니다. Android Studio > Tools > SDK Manager 로 진입해서 Android 6.0 (Marshmallow) 에 체크 > Apply 를 눌러서 플랫폼을 다운로드 합니다.
+Prototype 은 여건상 마시멜로 버전으로 만들었습니다. 위에서 설치한 Android Studio를 열고 위쪽 메뉴의 Tools > SDK Manager 로 진입해서 Android 6.0 (Marshmallow) 에 체크 > Apply 를 눌러서 플랫폼을 다운로드 합니다.
 
 ### 3. Open
 
@@ -46,23 +48,25 @@ Android Studio > Open > 소스 경로 선택 > Ok 를 눌러줍니다. 처음 �
 
 ### 4. Run
 
-Alt + Shift + x 가 앱 빌드 + 설치 + 실행의 기본 단축키입니다. (File > Settings > Key map 에 들어가서, Windows 라고 설정되어 있는 단축키 스타일을 Eclipse 로 바꿔주면 좀 편합니다.) 앱이 실행되어도, 앱이 Admin 이 아니므로, 기기 제어를 할 수 없습니다.
+Alt + Shift + x 가 앱 빌드 + 설치 + 실행의 기본 단축키입니다. (File > Settings > Key map 에 들어가서, Windows 라고 설정되어 있는 단축키 스타일을 Eclipse 로 바꿔주면 좀 편합니다.) 파일을 open한 후 그 상태에서 바로 닽축기 입력을 하시면 됩니다. 시간이 조금 소요되며, 설치 완료 후 device에 앱을 확인하실 수 있고, 앱이 실행되어도, 앱이 Admin 이 아니므로 기기 제어를 할 수 없습니다.
 
 ##### 4.1. Admin 설정
 
-Device 가 연결된 상태에서 다음의 adb 명령어를 쳐줍니다.
+Device 가 연결된 상태에서 cmd 콘솔에 다음의 adb 명령어를 쳐줍니다.
 
 adb shell dpm set-device-owner net.sungmin.jicomsy/.AdminReceiver
 
-다음과 같이 반응하면 성공입니다. (Device 안에 어떠한 Account 도 존재해서는 안됩니다.)
+다음과 같이 반응하면 성공입니다. (Device 안에 어떠한 Account 도 존재해서는 안됩니다. ex. 구글 계정)
 
-C:\Users\Sungmin>adb shell dpm set-device-owner net.sungmin.uran/.UranAdminReceiver
-Success: Device owner set to package net.sungmin.uran
-Active admin set to component {net.sungmin.uran/net.sungmin.uran.UranAdminReceiver}
+C:\Users\Sungmin>adb shell dpm set-device-owner net.sungmin.jicomsy/.AdminReceiver <br>
+Success: Device owner set to package net.sungmin.jicomsy <br>
+Active admin set to component {net.sungmin.jicomsy/net.sungmin.jicomsy.AdminReceiver} <br>
 
 C:\Users\Sungmin>
 
 이 후, 다시 앱을 진입하면, REMOVE ADMIN 등의 버튼이 활성화되어 있습니다.
+
+*참고로 개발용 PC와 device가 같은 네트워크(wifi)상에 있어야 모든 기능을 활용할 수 있습니다.
 
 ### 5. Upload
 
