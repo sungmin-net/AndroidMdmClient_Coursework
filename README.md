@@ -32,9 +32,9 @@ C:\Users\Sungmin>
 
 ### 2. Download
 
-다음의 명령어를 쳐줍니다. (git이 설치되어 있어야 합니다. git 설치는 인터넷을 참고하세요.)
+git이 설치되어 있어야 합니다. (git 설치는 인터넷을 참고하세요.)
 
-git clone로 파일을 다운로드할 곳을 소스경로로 지정하고, Git Bash에 아래의 코드를 입력합니다.
+git clone로 파일을 다운로드할 곳을 소스경로로 지정하고, Git Bash에 아래의 명령어를 입력합니다.
 
 소스경로> git clone https://github.com/sungmin-net/android-mdmClient-courseWork.git
 
