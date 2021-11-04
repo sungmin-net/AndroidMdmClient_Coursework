@@ -1,5 +1,6 @@
 package net.sungmin.jicomsy;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.admin.DevicePolicyManager;
 import android.content.BroadcastReceiver;
@@ -7,6 +8,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.Bundle;
@@ -16,6 +18,8 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
+
+import androidx.appcompat.app.AppCompatActivity;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -36,6 +40,8 @@ public class MainActivity extends Activity {
     Button mBtnSendHello;
     Button mBtnStartPolling;
     Button mBtnStopPolling;
+    Button mBtnScanWifi;
+    Button mBtnClearLog;
 
     EditText mEtServerIp;
     EditText mEtServerPort;
@@ -114,9 +120,10 @@ public class MainActivity extends Activity {
                 activityLog("Camera disallowed.");
             }
         });
-        mBtnSendHello = findViewById(R.id.btn_send_hello);
+
         mEtServerIp = findViewById(R.id.et_server_ip);
         mEtServerPort = findViewById(R.id.et_server_port);
+        mBtnSendHello = findViewById(R.id.btn_send_hello);
         mBtnSendHello.setOnClickListener(new View.OnClickListener() {
 
             @Override
@@ -125,6 +132,16 @@ public class MainActivity extends Activity {
                 mServiceIntent.setAction(AdminService.ACTION_SEND_HELLO);
                 mServiceIntent.putExtra("SERVER_IP", getServerIp());
                 mServiceIntent.putExtra("SERVER_PORT", getServerPort());
+                startService(mServiceIntent);
+            }
+        });
+
+        mBtnScanWifi = findViewById(R.id.btn_scan_wifi);
+        mBtnScanWifi.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Log.i(LOG_TAG, "Scan wifi clicked.");
+                mServiceIntent.setAction(AdminService.ACTION_SCAN_WIFI);
                 startService(mServiceIntent);
             }
         });
@@ -156,12 +173,33 @@ public class MainActivity extends Activity {
                 mIsPolling = false;
             }
         });
+
+        mBtnClearLog = findViewById(R.id.btn_clear_log);
+        mBtnClearLog.setOnClickListener(new View.OnClickListener() {
+
+            @Override
+            public void onClick(View view) {
+                mTxtActivityLogger.setText("[" + getTime() + "] Activity logger cleared.");
+            }
+        });
+
+
     }
+
+//    @Override
+//    public void onRequestPermissionsResult(int requestCode, String[] permissions,
+//            int[] grantResults) {
+//        Log.d(LOG_TAG, "onRequestPermissionsResult()");
+//        if (requestCode == 0 && grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+//            // TODO - just finish()?
+//        }
+//    }
 
     @Override
     protected void onResume() {
         super.onResume();
         Log.d(LOG_TAG, "onResumed");
+
         Log.d(LOG_TAG, "onResumed" + getApplicationContext().getPackageName());
         boolean isDeviceOwner = mDpm.isDeviceOwnerApp(mPackageName);
         if (isDeviceOwner) {
@@ -184,8 +222,10 @@ public class MainActivity extends Activity {
 
         if (isConnected) {
             mBtnSendHello.setEnabled(true);
+            mBtnScanWifi.setEnabled(true);
         } else {
             mBtnSendHello.setEnabled(false);
+            mBtnScanWifi.setEnabled(false);
         }
 
         if (isConnected && isDeviceOwner) {
@@ -199,6 +239,15 @@ public class MainActivity extends Activity {
         } else {
             mBtnStopPolling.setEnabled(false);
             mBtnStartPolling.setEnabled(false);
+        }
+
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            Log.d(LOG_TAG, "ACCESS_FINE_LOCATION is not allowed.");
+            activityLog("Allow location permission in Settings to scan wifi.");
+            mBtnScanWifi.setEnabled(false);
+        } else {
+            mBtnScanWifi.setEnabled(true);
         }
 
         registerReceiver(mReceiver, new IntentFilter(ACTIVITY_LOG));
@@ -227,7 +276,7 @@ public class MainActivity extends Activity {
     }
 
     protected void activityLog(String msg) {
-        mTxtActivityLogger.append("\n [" + getTime() + "] " + msg);
+        mTxtActivityLogger.append("\n[" + getTime() + "] " + msg);
     }
 
     private String getTime() {

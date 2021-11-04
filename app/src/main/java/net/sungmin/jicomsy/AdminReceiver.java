@@ -18,7 +18,7 @@ public class AdminReceiver extends DeviceAdminReceiver {
         DevicePolicyManager dpm =
                 (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
         ComponentName cn = getComponentName(context);
-        dpm.setProfileName(cn, "URAN Device admin");
+        dpm.setProfileName(cn, "JICOMSY Device admin");
     }
 
     public static ComponentName getComponentName(Context context) {

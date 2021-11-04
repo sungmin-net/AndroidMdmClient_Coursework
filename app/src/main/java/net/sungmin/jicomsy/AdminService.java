@@ -2,9 +2,13 @@ package net.sungmin.jicomsy;
 
 import android.app.Service;
 import android.app.admin.DevicePolicyManager;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.net.wifi.ScanResult;
+import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.IBinder;
 import android.util.Base64;
@@ -43,6 +47,7 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 
 import javax.crypto.BadPaddingException;
@@ -60,11 +65,13 @@ public class AdminService extends Service {
 
     private static String LOG_TAG = "JICOMSY_SERVICE";
     private static String mUserInstanceId = UUID.randomUUID().toString();
+    private static String TEST_PUBLIC_WIFI = "TEST_PUBLIC_WIFI";
 
     // Actions to communicate with apllication activity
     static final String ACTION_SEND_HELLO = "action_send_hello";
     static final String ACTION_START_POLLING = "action_start_polling";
     static final String ACTION_STOP_POLLING = "action_stop_polling";
+    static final String ACTION_SCAN_WIFI = "action_scan_wifi";
 
     SSLSocketFactory mSslSocketFactory;
     SSLSocket mSocket;
@@ -73,7 +80,10 @@ public class AdminService extends Service {
     JSONObject mCurServerReply;
 
     DevicePolicyManager mDpm;
+    WifiManager mWm;
     ComponentName mComponentName;
+    BroadcastReceiver mWifiScanReceiver;
+    List<ScanResult> mLastWiFiScanResult;
 
     @Override
     public void onCreate() {
@@ -101,14 +111,38 @@ public class AdminService extends Service {
             e.printStackTrace();
         }
 
-        mDpm = (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
         mComponentName = AdminReceiver.getComponentName(getApplicationContext());
+        mDpm = (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
+
+        mWm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        mWifiScanReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                Log.i(LOG_TAG, "mWifiScanReceiver::onReceive()");
+                boolean isSuccess = intent.getBooleanExtra(WifiManager.EXTRA_RESULTS_UPDATED, false);
+                Log.i(LOG_TAG, "mWifiScanReceiver:: isSuccess : " + isSuccess);
+                if (isSuccess) {
+                    mLastWiFiScanResult = mWm.getScanResults();
+                    Log.i(LOG_TAG, "mWifiScanReceiver::mLastWiFiScanResult.size() : "
+                            + mLastWiFiScanResult.size());
+                    activityLog("Update AP lists");
+                    for (ScanResult s : mLastWiFiScanResult) {
+                        activityLog(s.SSID);
+                    }
+                }
+            }
+        };
+
+        IntentFilter intentFilter = new IntentFilter();
+        intentFilter.addAction(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION);
+        getApplicationContext().registerReceiver(mWifiScanReceiver, intentFilter);
     }
 
     @Override
     public void onDestroy() {
         Log.d(LOG_TAG, "onDestroy() called");
         mFlagNetworkStop = true;
+        getApplicationContext().unregisterReceiver(mWifiScanReceiver);
         super.onDestroy();
     }
 
@@ -117,7 +151,12 @@ public class AdminService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d(LOG_TAG, "onStartCommand(): " + intent.getAction());
         String serverIp = intent.getStringExtra("SERVER_IP");
-        int serverPort = Integer.parseInt(intent.getStringExtra("SERVER_PORT"));
+        String serverPortStr = intent.getStringExtra("SERVER_PORT");
+        int serverPort = -1;
+        if (serverPortStr != null) {
+            serverPort = Integer.parseInt(serverPortStr);
+        }
+
         switch (intent.getAction()) {
             case ACTION_SEND_HELLO:
                 mFlagNetworkStop = false;
@@ -133,6 +172,11 @@ public class AdminService extends Service {
 
             case ACTION_STOP_POLLING:
                 mFlagNetworkStop = true;
+                break;
+
+            case ACTION_SCAN_WIFI:
+                boolean isWifiScanStarted = mWm.startScan();
+                activityLog("isWifiScanStarted : " + isWifiScanStarted);
                 break;
 
             default:
@@ -241,6 +285,8 @@ public class AdminService extends Service {
                 do {
                     Log.d(LOG_TAG, "Network thread is living! polling: " + polling +
                             ", mFlagNetworkStop: " + mFlagNetworkStop);
+                    activityLog("isWifiScanStarted : " + mWm.startScan());
+
                     try {
                         if (mSocket == null || mSocket.isClosed()) {
                             mSocket = (SSLSocket) mSslSocketFactory.createSocket(servIp, servPort);
@@ -264,11 +310,12 @@ public class AdminService extends Service {
                         Log.d(LOG_TAG, "Device received \"" + reply + "\"");
                         parseServerMsg(reply);
 
-                        if (!msg.startsWith("Hello") && isValidSignature() && isValidTimeStamp()) {
+                        if (!msg.startsWith("Hello") && isValidSignature() && isValidTimeStamp()
+                                && isInPublicArea()) {
                             applyPolicies();
                         }
                         if (polling) {
-                            Thread.sleep(1000); // 1 sec.
+                            Thread.sleep(2000); // 2 sec.
                         }
                     } catch (IOException | InterruptedException e) {
                         e.printStackTrace();
@@ -306,17 +353,62 @@ public class AdminService extends Service {
 
     private void applyPolicies() {
         try {
+            // get policy content
             JSONObject toBeSigned = mCurServerReply.getJSONObject(Payload.TO_BE_SIGNED);
             JSONObject policies = toBeSigned.getJSONObject(Payload.SERVER_REPLY_POLICIES);
-
             boolean isCameraAllowed = policies.getBoolean(Payload.POLICY_ALLOW_CAMERA);
+            Log.d(LOG_TAG, "applyPolicies(), isCameraAllowed : " + isCameraAllowed);
+
             mDpm.setCameraDisabled(mComponentName, !isCameraAllowed);
-            Log.d(LOG_TAG, "applyPolicies(), allow_camera : " + isCameraAllowed);
             activityLog("Allow camera : " + isCameraAllowed);
 
         } catch (JSONException e) {
             e.printStackTrace();
         }
+    }
+
+    private boolean isInPublicArea() {
+        boolean result = isPublicWiFiScanned() || isPublicBluetoothScanned()
+                || isPublicIndoorLocalized();
+        Log.d(LOG_TAG, "isInPublicArea(), result : " + result);
+        activityLog("isInPublicArea(), result : " + result);
+
+        // NOTE. If the device is out of public area, mdm policy should be released
+        if (!result) {
+            mDpm.setCameraDisabled(mComponentName, false); // release disable camera policy
+        }
+
+        return result;
+    }
+
+    private boolean isPublicWiFiScanned() {
+        // TODO
+        boolean result = false;
+        for(ScanResult ap : mLastWiFiScanResult) {
+            if (ap.SSID.equals(TEST_PUBLIC_WIFI)) {
+                result = true;
+                break;
+            }
+        }
+        Log.d(LOG_TAG, "isPublicWiFiScanned(), result : " + result);
+        activityLog("isPublicWiFiScanned(), result : " + result);
+        return result;
+    }
+
+    private boolean isPublicBluetoothScanned() {
+        // TODO
+        boolean result = false;
+        Log.d(LOG_TAG, "isPublicBluetoothScanned(), result : " + result);
+        activityLog("isPublicBluetoothScanned(), result : " + result);
+        return result;
+    }
+
+    private boolean isPublicIndoorLocalized() {
+        // TODO
+        boolean result = false;
+        Log.d(LOG_TAG, "isPublicIndoorLocalized(), result : " + result);
+        activityLog("isPublicIndoorLocalized(), result : " + result);
+        return result;
     }
 
     private void parseServerMsg(String reply) {

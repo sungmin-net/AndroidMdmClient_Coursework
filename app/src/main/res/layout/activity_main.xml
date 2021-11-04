@@ -19,22 +19,38 @@
         android:layout_height="wrap_content"
         android:id="@+id/txt_is_device_owner"/>
 
-    <Button
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:id="@+id/btn_remove_admin"
-        android:text="Remove admin"
-        android:enabled="false"/>
+        android:orientation="horizontal"
+        >
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:id="@+id/btn_remove_admin"
+            android:text="Remove\nadmin"
+            android:enabled="false"/>
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:id="@+id/btn_clear_log"
+            android:text="Clear\nLog"
+            android:enabled="true"/>
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:id="@+id/btn_scan_wifi"
+            android:text="Scan\nWi-Fi"
+            android:enabled="false"/>
+    </LinearLayout>
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:background="@android:color/darker_gray"/>
-
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Self policy test"/>
-
+        android:text="Self MDM policy test"/>
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -44,26 +60,23 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:id="@+id/btn_allow_camera"
-            android:text="Allow\ncamera"
+            android:text="Allow\nCamera"
             android:enabled="false"/>
         <Button
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:id="@+id/btn_disallow_camera"
-            android:text="Disallow\ncamera"
+            android:text="Disallow\nCamera"
             android:enabled="false"/>
     </LinearLayout>
-
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:background="@android:color/darker_gray"/>
-
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="TLS test"/>
-
+        android:text="TLS Remote test"/>
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -77,37 +90,20 @@
             android:layout_height="wrap_content"
             android:id="@+id/et_server_ip"
             android:text="192.168.0.11" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal">
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Server port: "/>
+            android:text="\tServer port: "/>
         <EditText
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:id="@+id/et_server_port"
             android:text="9999" />
     </LinearLayout>
-
-    <Button
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:id="@+id/btn_send_hello"
-        android:text="Send hello"
-        android:enabled="false"/>
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:background="@android:color/darker_gray"/>
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Remote policy test"/>
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -116,14 +112,20 @@
         <Button
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:id="@+id/btn_send_hello"
+            android:text="Send\nHello"
+            android:enabled="false"/>
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:id="@+id/btn_start_polling"
-            android:text="Start polling"
+            android:text="Start\nPolling"
             android:enabled="false"/>
         <Button
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:id="@+id/btn_stop_polling"
-            android:text="Stop polling"
+            android:text="Stop\nPolling"
             android:enabled="false"/>
     </LinearLayout>
     <View
