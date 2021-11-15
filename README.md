@@ -59,7 +59,7 @@ adb shell dpm set-device-owner net.sungmin.jicomsy/.AdminReceiver
 다음과 같이 반응하면 성공입니다. (Device 안에 어떠한 Account 도 존재해서는 안됩니다. ex. 구글 계정/ cf. Uran admin도 안됩니다.)
 
 C:\Users\Sungmin>adb shell dpm set-device-owner net.sungmin.jicomsy/.AdminReceiver <br>
-Success: Device owner set to package net.sungmin.jicomsy <br>
+**Success**: Device owner set to package net.sungmin.jicomsy <br>
 Active admin set to component {net.sungmin.jicomsy/net.sungmin.jicomsy.AdminReceiver} <br>
 
 C:\Users\Sungmin>
@@ -67,6 +67,12 @@ C:\Users\Sungmin>
 이 후, 다시 앱을 진입하면, REMOVE ADMIN 등의 버튼이 활성화되어 있습니다.
 
 *참고로 개발용 PC와 device가 같은 네트워크(wifi)상에 있어야 모든 기능을 활용할 수 있습니다.
+
+##### 4.1. Runtime Permission 설정
+
+WiFi 스캔 기능이 추가되어 runtime permission 이 필요합니다. 앱 내부 구현이 아직(?) 안되어서 다음과 같이 수동으로 부여합니다. 권한이 없으면 Scan WiFi 버튼이 비활성화되도록 구현하였습니다.
+
+설정 > 애플리케이션 관리 > 애플리케이션 관리자 > JiComSy prototype > 권한 > '위치' 권한 활성화
 
 ### 5. Upload
 
