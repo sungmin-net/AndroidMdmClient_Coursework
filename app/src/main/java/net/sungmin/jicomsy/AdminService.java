@@ -2,6 +2,11 @@ package net.sungmin.jicomsy;
 
 import android.app.Service;
 import android.app.admin.DevicePolicyManager;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothManager;
+import android.bluetooth.le.BluetoothLeScanner;
+import android.bluetooth.le.ScanCallback;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -10,7 +15,9 @@ import android.content.IntentFilter;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.ParcelUuid;
 import android.util.Base64;
 import android.util.Log;
 
@@ -36,6 +43,7 @@ import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.PublicKey;
+import java.security.SecureRandom;
 import java.security.Signature;
 import java.security.SignatureException;
 import java.security.cert.Certificate;
@@ -45,6 +53,7 @@ import java.security.spec.MGF1ParameterSpec;
 import java.security.spec.PSSParameterSpec;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
@@ -61,29 +70,58 @@ import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManagerFactory;
 
+import static net.sungmin.jicomsy.Util.getTimeStamp;
+
 public class AdminService extends Service {
 
     private static String LOG_TAG = "JICOMSY_SERVICE";
     private static String mUserInstanceId = UUID.randomUUID().toString();
     private static String TEST_PUBLIC_WIFI = "TEST_PUBLIC_WIFI";
+    private static String TEST_PUBLIC_BT_NAME = "pBeacon"; // TODO should be more reliable
+    private static int NONCE_SIZE_BYTE = 32; // 256 bit
+    private static int POLLING_INTERVAL = 3000; // 3 sec
+    private static int MAX_VALID_NONCE = 10;
+    private static int MAX_VALID_BEACON_TIME = 10000; // 10 sec
 
-    // Actions to communicate with apllication activity
+    // Actions to communicate with the activity
     static final String ACTION_SEND_HELLO = "action_send_hello";
     static final String ACTION_START_POLLING = "action_start_polling";
     static final String ACTION_STOP_POLLING = "action_stop_polling";
     static final String ACTION_SCAN_WIFI = "action_scan_wifi";
+    static final String ACTION_SCAN_BT = "action_scan_bluetooth";
 
     SSLSocketFactory mSslSocketFactory;
     SSLSocket mSocket;
-    boolean mFlagNetworkStop = false;
+    boolean mIsPolling = false;
     Thread mNetworkThread;
     JSONObject mCurServerReply;
+    List<String> mValidNonces;
+    SecureRandom mSecureRandom = new SecureRandom();
 
     DevicePolicyManager mDpm;
     WifiManager mWm;
+    BluetoothManager mBm;
+    BluetoothAdapter mBa;
     ComponentName mComponentName;
     BroadcastReceiver mWifiScanReceiver;
     List<ScanResult> mLastWiFiScanResult;
+    List<Beacon> mLastBtScanResult;
+
+    BluetoothLeScanner mBleScanner;
+    ScanCallback mBleScanCallback;
+    Handler mHandler;
+    boolean mIsBleScanning;
+
+    // BT wrapper for timestamp
+    static class Beacon {
+        BluetoothDevice mDevice;
+        String mTimeStamp;
+
+        public Beacon(BluetoothDevice device) {
+            mDevice = device;
+            mTimeStamp = getTimeStamp();
+        }
+    }
 
     @Override
     public void onCreate() {
@@ -115,6 +153,10 @@ public class AdminService extends Service {
         mDpm = (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
 
         mWm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        mBm = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+        mBa = mBm.getAdapter();
+        mHandler = new Handler();
+
         mWifiScanReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
@@ -123,26 +165,57 @@ public class AdminService extends Service {
                 Log.i(LOG_TAG, "mWifiScanReceiver:: isSuccess : " + isSuccess);
                 if (isSuccess) {
                     mLastWiFiScanResult = mWm.getScanResults();
-                    Log.i(LOG_TAG, "mWifiScanReceiver::mLastWiFiScanResult.size() : "
-                            + mLastWiFiScanResult.size());
-                    activityLog("Update AP lists");
-                    for (ScanResult s : mLastWiFiScanResult) {
-                        activityLog(s.SSID);
-                    }
+                    Log.i(LOG_TAG, "isPublicWifiScanned() : " + isPublicWiFiScanned());
+                    activityLog( "isPublicWifiScanned() : " + isPublicWiFiScanned());
                 }
             }
         };
 
-        IntentFilter intentFilter = new IntentFilter();
-        intentFilter.addAction(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION);
-        getApplicationContext().registerReceiver(mWifiScanReceiver, intentFilter);
+        mLastBtScanResult = new ArrayList<>();
+
+        IntentFilter wifiIntentFilter = new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION);
+        getApplicationContext().registerReceiver(mWifiScanReceiver, wifiIntentFilter);
+
+        mBleScanner = BluetoothAdapter.getDefaultAdapter().getBluetoothLeScanner();
+        mBleScanCallback = new ScanCallback() {
+            @Override
+            public void onScanResult(int callbackType, android.bluetooth.le.ScanResult result) {
+                super.onScanResult(callbackType, result);
+
+                Log.i(LOG_TAG, "mBleScanCallback::onScanResult()");
+
+                String name = result.getDevice().getName();
+                String addr = result.getDevice().getAddress();
+                String uuid = null;
+                ParcelUuid[] uuids = result.getDevice().getUuids();
+                if (uuids != null && uuids.length != 0) {
+                    for (ParcelUuid parcelUuid : uuids) {
+                        uuid = parcelUuid.getUuid().toString();
+                    }
+                }
+
+                Log.i(LOG_TAG, "mBleScanCallback.onScanResult : name(" +
+                        result.getDevice().getName() + ") addr(" + result.getDevice().getAddress() +
+                        ") uuid(" + uuid + ")");
+
+                activityLog("mBleScanCallback.onScanResult : name(" +
+                        result.getDevice().getName() + ") addr(" + result.getDevice().getAddress() +
+                        ") uuid(" + uuid + ")");
+
+                mLastBtScanResult.add(new Beacon(result.getDevice()));
+            }
+        };
     }
 
     @Override
     public void onDestroy() {
         Log.d(LOG_TAG, "onDestroy() called");
-        mFlagNetworkStop = true;
+        mIsPolling = false;
         getApplicationContext().unregisterReceiver(mWifiScanReceiver);
+        if (mIsBleScanning) {
+            stopBleScanning();
+        }
+
         super.onDestroy();
     }
 
@@ -159,24 +232,44 @@ public class AdminService extends Service {
 
         switch (intent.getAction()) {
             case ACTION_SEND_HELLO:
-                mFlagNetworkStop = false;
-                String msg = "Hello! this is android.";
-                sendToServer(serverIp, serverPort, msg, false /* polling*/);
+                mIsPolling = false;
+                sendToServer(serverIp, serverPort, true /* isEchoUnitTest*/);
                 break;
 
             case ACTION_START_POLLING:
-                mFlagNetworkStop = false;
-                String payload = getClientPayload(Payload.CLIENT_REQUEST_POLICIES);
-                sendToServer(serverIp, serverPort, payload, true /* polling*/);
+                mIsPolling = true;
+                mValidNonces = new ArrayList<>();
+                sendToServer(serverIp, serverPort, false /* isEchoUnitTest*/);
                 break;
 
             case ACTION_STOP_POLLING:
-                mFlagNetworkStop = true;
+                mIsPolling = false;
+                if (mIsBleScanning) {
+                    stopBleScanning();
+                }
                 break;
 
             case ACTION_SCAN_WIFI:
                 boolean isWifiScanStarted = mWm.startScan();
                 activityLog("isWifiScanStarted : " + isWifiScanStarted);
+                break;
+
+            case ACTION_SCAN_BT:
+                activityLog("BtScanStarted.");
+                // In unit test, stop BLE scanning after 10 sec.
+                mHandler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        activityLog("BtScanStopped.");
+                        if (mIsBleScanning) {
+                            stopBleScanning();
+                        }
+                        Log.i(LOG_TAG, "isPublicBluetoothScanned() : " + isPublicBluetoothScanned());
+                        activityLog( "isPublicBluetoothScanned() : " + isPublicBluetoothScanned());
+                    }
+                }, MAX_VALID_BEACON_TIME);
+
+                startBleScanning();
                 break;
 
             default:
@@ -191,29 +284,43 @@ public class AdminService extends Service {
         return null;
     }
 
-    private boolean isValidSignature() {
+    private void startBleScanning() {
+        mIsBleScanning = true;
+        mBleScanner.startScan(mBleScanCallback);
+    }
+
+    private void stopBleScanning() {
+        mIsBleScanning = false;
+        mBleScanner.stopScan(mBleScanCallback);
+    }
+
+    private boolean isValidSign() {
         boolean ret = false;
         try {
             String servSign = mCurServerReply.getString(Payload.SERVER_SIGN);
             String toBeSigned = mCurServerReply.getString(Payload.TO_BE_SIGNED);
             byte[] signBytes = Base64.decode(servSign, Base64.DEFAULT);
+
             Signature verifier = Signature.getInstance("SHA256withRSA/PSS",
                     new BouncyCastleProvider());
             verifier.setParameter(new PSSParameterSpec("SHA-256", "MGF1", MGF1ParameterSpec.SHA256,
-                    32 /*saltLength*/, 1 /*trailer field*/));
+                    32 , 1));
+
             verifier.initVerify(loadCert());
-            verifier.update(toBeSigned.getBytes());
+            Log.d(LOG_TAG, "isValidSign(), servSignStr : " + servSign);
+            Log.d(LOG_TAG, "isValidSign(), toBeSignedStr : " + toBeSigned);
+            verifier.update(toBeSigned.getBytes("UTF8"));
             ret = verifier.verify(signBytes);
-        } catch (JSONException | NoSuchAlgorithmException | InvalidKeyException |
-                SignatureException | InvalidAlgorithmParameterException e) {
+        } catch (JSONException | NoSuchAlgorithmException | InvalidKeyException | SignatureException
+                | UnsupportedEncodingException | InvalidAlgorithmParameterException e) {
             e.printStackTrace();
         }
 
-        Log.d(LOG_TAG, "isValidSignature() : " + ret);
+        Log.d(LOG_TAG, "isValidSignature(), ret : " + ret);
+        activityLog("isValidSignature(), ret : " + ret);
         return ret;
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
     private String getClientPayload(String cmd) {
         JSONObject payload = new JSONObject();
         try {
@@ -223,6 +330,7 @@ public class AdminService extends Service {
             rsaEnc.put(Payload.VERSION, "0.1");
             rsaEnc.put(Payload.CMD, cmd);
             rsaEnc.put(Payload.USER_ID, mUserInstanceId);
+            rsaEnc.put(Payload.NONCE, getNonce());
             payload.put(Payload.RSA_ENC, rsaEncrypt(rsaEnc.toString()));
 
             payload.put(Payload.SERVER_ALIAS, "UranMdmServer");
@@ -233,7 +341,19 @@ public class AdminService extends Service {
         return payload.toString();
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
+    private String getNonce() {
+        byte[] newNonce = new byte[ NONCE_SIZE_BYTE ];
+        mSecureRandom.nextBytes(newNonce);
+        String nonceString = Base64.encodeToString(newNonce, Base64.URL_SAFE);
+        mValidNonces.add(nonceString);
+        if (mValidNonces.size() == MAX_VALID_NONCE) { // valid nonce lifetime is 20 seconds
+            mValidNonces.remove(0); // remove oldest one
+        }
+        Log.i(LOG_TAG, "getNonce() : " + nonceString);
+
+        return nonceString;
+    }
+
     private String rsaEncrypt(String plainText){
         Log.d(LOG_TAG, "rsaEncrypt(), plainText: " + plainText);
         String cipherText = "rsaEncrypt() failed";
@@ -274,8 +394,9 @@ public class AdminService extends Service {
         sendBroadcast(intent);
     }
 
-    private void sendToServer(String servIp, int servPort, String msg, boolean polling) {
+    private void sendToServer(String servIp, int servPort, boolean isEchoUnitTest) {
         if (mNetworkThread != null && mNetworkThread.isAlive()) {
+            Log.d(LOG_TAG, "Current network thread is interrupted.");
             mNetworkThread.interrupt();
         }
 
@@ -283,9 +404,26 @@ public class AdminService extends Service {
             @Override
             public void run() {
                 do {
-                    Log.d(LOG_TAG, "Network thread is living! polling: " + polling +
-                            ", mFlagNetworkStop: " + mFlagNetworkStop);
-                    activityLog("isWifiScanStarted : " + mWm.startScan());
+                    Log.d(LOG_TAG, "Network thread is living! isEchoUnitTest: " + isEchoUnitTest +
+                            ", mIsPolling: " + mIsPolling);
+
+                    String msg = null;
+                    if (isEchoUnitTest) {
+                        msg = "Hello! I am Android device.";
+                    } else {
+                        msg = getClientPayload(Payload.CLIENT_REQUEST_POLICIES);
+
+                        // trigger wifi scan
+                        boolean isWifiScanStarted = mWm.startScan();
+                        activityLog("isWifiScanStarted : " + isWifiScanStarted);
+
+                        // trigger bt scan
+                        if (!mIsBleScanning) {
+                            mIsBleScanning = true;
+                            mBleScanner.startScan(mBleScanCallback);
+                        }
+                        activityLog("isBtScanStarted : " + mIsBleScanning);
+                    }
 
                     try {
                         if (mSocket == null || mSocket.isClosed()) {
@@ -310,12 +448,15 @@ public class AdminService extends Service {
                         Log.d(LOG_TAG, "Device received \"" + reply + "\"");
                         parseServerMsg(reply);
 
-                        if (!msg.startsWith("Hello") && isValidSignature() && isValidTimeStamp()
-                                && isInPublicArea()) {
+                        if (!isEchoUnitTest && isValidSign() && isValidNonce()
+                                && isPublicArea()) {
                             applyPolicies();
+                        } else {
+                            releasePolicies();
                         }
-                        if (polling) {
-                            Thread.sleep(2000); // 2 sec.
+                        
+                        if (!isEchoUnitTest) {
+                            Thread.sleep(POLLING_INTERVAL);
                         }
                     } catch (IOException | InterruptedException e) {
                         e.printStackTrace();
@@ -328,23 +469,41 @@ public class AdminService extends Service {
                             }
                         }
                     }
-                } while (polling && !mFlagNetworkStop);
+                } while (!isEchoUnitTest && mIsPolling);
             }
         });
 
         mNetworkThread.start();
     }
 
-    private boolean isValidTimeStamp() {
+    private boolean isValidNonce() {
+        boolean result = false;
+        try {
+            String servNonce = mCurServerReply.getJSONObject(Payload.TO_BE_SIGNED)
+                    .getString(Payload.NONCE);
+            result = mValidNonces.contains(servNonce);
+
+            Log.d(LOG_TAG, "received servNonce :" + servNonce);
+            Log.d(LOG_TAG, "current valid nonces : " + mValidNonces.toString());
+
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+        Log.d(LOG_TAG, "isValidNonce(), result : " + result);
+        activityLog("isValidNonce() : " + result);
+        return result;
+    }
+
+    private boolean isValidTimeStamp(String timeStampStr) {
         boolean ret = false;
         try {
-            SimpleDateFormat format = new SimpleDateFormat("yy.MM.dd HH:mm:ss");
-            JSONObject toBeSigned = mCurServerReply.getJSONObject(Payload.TO_BE_SIGNED);
-            Date timeStamp = format.parse(toBeSigned.getString(Payload.TIME_STAMP));
+            SimpleDateFormat format = new SimpleDateFormat(Util.TIME_STAMP_FORMAT);
+            Date loggedTime = format.parse(timeStampStr);
             Date curTime = new Date();
-            ret = (curTime.getTime() - timeStamp.getTime()) < 5000; // 5 sec.
-            Log.d(LOG_TAG, "curTime : " + curTime.getTime() + ", timeStamp: " + timeStamp.getTime());
-        } catch (ParseException | JSONException e) {
+            ret = (curTime.getTime() - loggedTime.getTime()) < MAX_VALID_BEACON_TIME;
+            Log.d(LOG_TAG, "curTime : " + curTime.getTime() + ", timeStamp: " +
+                    loggedTime.getTime());
+        } catch (ParseException e) {
             e.printStackTrace();
         }
         Log.d(LOG_TAG, "isValidTimeStamp() : " + ret);
@@ -354,8 +513,9 @@ public class AdminService extends Service {
     private void applyPolicies() {
         try {
             // get policy content
-            JSONObject toBeSigned = mCurServerReply.getJSONObject(Payload.TO_BE_SIGNED);
-            JSONObject policies = toBeSigned.getJSONObject(Payload.SERVER_REPLY_POLICIES);
+            JSONObject policies = mCurServerReply.getJSONObject(Payload.TO_BE_SIGNED)
+                    .getJSONObject(Payload.SERVER_REPLY_POLICIES);
+            
             boolean isCameraAllowed = policies.getBoolean(Payload.POLICY_ALLOW_CAMERA);
             Log.d(LOG_TAG, "applyPolicies(), isCameraAllowed : " + isCameraAllowed);
 
@@ -366,26 +526,26 @@ public class AdminService extends Service {
             e.printStackTrace();
         }
     }
-
-    private boolean isInPublicArea() {
-        boolean result = isPublicWiFiScanned() || isPublicBluetoothScanned()
-                || isPublicIndoorLocalized();
-        Log.d(LOG_TAG, "isInPublicArea(), result : " + result);
-        activityLog("isInPublicArea(), result : " + result);
-
+    
+    private void releasePolicies() {
         // NOTE. If the device is out of public area, mdm policy should be released
-        if (!result) {
+        if (mDpm.getCameraDisabled(mComponentName)) {
             mDpm.setCameraDisabled(mComponentName, false); // release disable camera policy
         }
+    }
 
+    private boolean isPublicArea() {
+        boolean result = isPublicWiFiScanned() || isPublicBluetoothScanned()
+                || isPublicIndoorLocalized();
+        Log.d(LOG_TAG, "isPublicArea(), result : " + result);
+        activityLog("isPublicArea(), result : " + result);
         return result;
     }
 
     private boolean isPublicWiFiScanned() {
-        // TODO
         boolean result = false;
-        for(ScanResult ap : mLastWiFiScanResult) {
-            if (ap.SSID.equals(TEST_PUBLIC_WIFI)) {
+        for(ScanResult wifi : mLastWiFiScanResult) {
+            if (TEST_PUBLIC_WIFI.equals(wifi.SSID)) {
                 result = true;
                 break;
             }
@@ -396,8 +556,29 @@ public class AdminService extends Service {
     }
 
     private boolean isPublicBluetoothScanned() {
-        // TODO
         boolean result = false;
+
+        // Remove outdated data first
+        List<Beacon> toBeRemoved = new ArrayList<>();
+        for (int i = 0 ; i < mLastBtScanResult.size() ; i++) {
+            Beacon cur = mLastBtScanResult.get(i);
+            if (!isValidTimeStamp(cur.mTimeStamp)) {
+                toBeRemoved.add(cur);
+            }
+        }
+
+        for (Beacon b : toBeRemoved) {
+            mLastBtScanResult.remove(b);
+        }
+
+        for (int i = 0 ; i < mLastBtScanResult.size() ; i++) {
+            String name = mLastBtScanResult.get(i).mDevice.getName();
+            if (name != null && name.startsWith(TEST_PUBLIC_BT_NAME)) {
+                result = true;
+                break;
+            }
+        }
+
         Log.d(LOG_TAG, "isPublicBluetoothScanned(), result : " + result);
         activityLog("isPublicBluetoothScanned(), result : " + result);
         return result;

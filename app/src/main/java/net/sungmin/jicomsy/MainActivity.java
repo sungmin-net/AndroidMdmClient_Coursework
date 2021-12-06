@@ -3,6 +3,7 @@ package net.sungmin.jicomsy;
 import android.Manifest;
 import android.app.Activity;
 import android.app.admin.DevicePolicyManager;
+import android.bluetooth.BluetoothAdapter;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -19,10 +20,7 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 
-import androidx.appcompat.app.AppCompatActivity;
-
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import static net.sungmin.jicomsy.Util.getTimeStamp;
 
 public class MainActivity extends Activity {
 
@@ -31,6 +29,7 @@ public class MainActivity extends Activity {
 
     DevicePolicyManager mDpm;
     ConnectivityManager mCm;
+    BluetoothAdapter mBa;
 
     TextView mTxtIsDeviceOwner;
     TextView mTxtActivityLogger;
@@ -42,12 +41,14 @@ public class MainActivity extends Activity {
     Button mBtnStopPolling;
     Button mBtnScanWifi;
     Button mBtnClearLog;
+    Button mBtnScanBt;
 
     EditText mEtServerIp;
     EditText mEtServerPort;
     String mPackageName;
     ComponentName mComponentName;
     Intent mServiceIntent;
+
 
     boolean mIsPolling = false;
 
@@ -76,6 +77,7 @@ public class MainActivity extends Activity {
         mPackageName = getApplicationContext().getPackageName();
         mComponentName = AdminReceiver.getComponentName(getApplicationContext());
         mServiceIntent = new Intent(getApplicationContext(), AdminService.class);
+        mBa = BluetoothAdapter.getDefaultAdapter();
 
         setupButtons();
         enableActivityLog();
@@ -84,7 +86,7 @@ public class MainActivity extends Activity {
     private void enableActivityLog() {
         mTxtActivityLogger = findViewById(R.id.activity_logger);
         mTxtActivityLogger.setMovementMethod(new ScrollingMovementMethod());
-        mTxtActivityLogger.setText("[" + getTime() + "] Activity logger started.");
+        mTxtActivityLogger.setText("[" + getTimeStamp() + "] Activity logger started.");
     }
 
     private void setupButtons() {
@@ -179,21 +181,21 @@ public class MainActivity extends Activity {
 
             @Override
             public void onClick(View view) {
-                mTxtActivityLogger.setText("[" + getTime() + "] Activity logger cleared.");
+                mTxtActivityLogger.setText("[" + getTimeStamp() + "] Activity logger cleared.");
             }
         });
 
+        mBtnScanBt = findViewById(R.id.btn_scan_bt);
+        mBtnScanBt.setOnClickListener(new View.OnClickListener() {
 
+            @Override
+            public void onClick(View view) {
+                Log.i(LOG_TAG, "Scan bluetooth clicked.");
+                mServiceIntent.setAction(AdminService.ACTION_SCAN_BT);
+                startService(mServiceIntent);
+            }
+        });
     }
-
-//    @Override
-//    public void onRequestPermissionsResult(int requestCode, String[] permissions,
-//            int[] grantResults) {
-//        Log.d(LOG_TAG, "onRequestPermissionsResult()");
-//        if (requestCode == 0 && grantResults[0] != PackageManager.PERMISSION_GRANTED) {
-//            // TODO - just finish()?
-//        }
-//    }
 
     @Override
     protected void onResume() {
@@ -250,6 +252,13 @@ public class MainActivity extends Activity {
             mBtnScanWifi.setEnabled(true);
         }
 
+        if (mBa != null && mBa.isEnabled() &&
+                getPackageManager().hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)) {
+            mBtnScanBt.setEnabled(true);
+        } else {
+            mBtnScanBt.setEnabled(false);
+        }
+
         registerReceiver(mReceiver, new IntentFilter(ACTIVITY_LOG));
     }
 
@@ -276,12 +285,6 @@ public class MainActivity extends Activity {
     }
 
     protected void activityLog(String msg) {
-        mTxtActivityLogger.append("\n[" + getTime() + "] " + msg);
+        mTxtActivityLogger.append("\n[" + getTimeStamp() + "] " + msg);
     }
-
-    private String getTime() {
-        SimpleDateFormat format = new SimpleDateFormat("yy.MM.dd HH:mm:ss");
-        return format.format(new Date());
-    }
-
 }

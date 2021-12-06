@@ -10,7 +10,7 @@ public class Payload {
     static final String USER_ID = "UserId";
     static final String SERVER_ALIAS = "ServAlias";
     static final String TO_BE_SIGNED = "ToBeSigned";
-    static final String TIME_STAMP = "TimeStamp";
+    static final String NONCE = "Nonce";
     static final String SERVER_SIGN = "ServSign";
 
     // Commands to communicate with MDM server
